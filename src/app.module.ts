@@ -18,14 +18,16 @@ import { LightningModule } from './lightning/lightning.module';
         return {
           type: 'mysql',
           host: config.get<string>('DB_HOST', 'localhost'),
-          port: config.get<number>('DB_PORT', 3306),
+          port: Number(config.get<number>('DB_PORT', 3306)),
           username: config.get<string>('DB_USER', 'root'),
           password: config.get<string>('DB_PASS', ''),
           database: config.get<string>('DB_NAME', 'weather_dash'),
           entities: [LightningStrike],
           synchronize: !isProduction,
+          ssl: {
+            rejectUnauthorized: true,
+          },
           extra: {
-            // Small pool for serverless — avoids exhausting MySQL max_connections
             connectionLimit: isProduction ? 5 : 10,
             connectTimeout: 10000,
           },
