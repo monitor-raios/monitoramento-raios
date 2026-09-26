@@ -8,6 +8,7 @@ import { Between, FindManyOptions, Repository } from 'typeorm';
 import { BackfillLightningDto } from './dto/backfill-lightning.dto';
 import { QueryLightningDto } from './dto/query-lightning.dto';
 import { LightningStrike } from './entities/lightning-strike.entity';
+import { ClassifyLightningRisk, RiskLevel } from './lightning-risk.util';
 
 const BRAZIL_MONITORING_POINTS = [
   { name: 'São Paulo', lat: -23.5505, lon: -46.6333 },
@@ -36,7 +37,9 @@ const OWM_INTENSITY_MAP: Record<number, number> = {
 
 // Intensity in kA for Open-Meteo WMO thunderstorm codes
 const METEO_INTENSITY_MAP: Record<number, number> = {
-  95: 25, 96: 40, 99: 60,
+  80: 15, 81: 28, 82: 45, 
+  63: 22, 65: 42, 95: 30, 
+  96: 45, 99: 65,
 };
 
 interface OpenWeatherResponse {
@@ -232,5 +235,103 @@ export class LightningService {
     }
 
     return strikes;
+  }
+  async getSummaryMetrics() {
+    const rawStats = await this.repo
+      .createQueryBuilder('strike')
+      .select('COUNT(strike.id)', 'totalEvents')
+      .addSelect('AVG(strike.intensity)', 'averageIntensityKa')
+      .addSelect('MAX(strike.intensity)', 'maxIntensityKa')
+      .addSelect('MIN(strike.intensity)', 'minIntensityKa')
+      .getRawOne();
+
+    const strikes = await this.repo.find({
+      select: ['id', 'intensity'],
+    });
+
+    const riskDistribution = {
+      [RiskLevel.BAIXO]: 0,
+      [RiskLevel.MEDIO]: 0,
+      [RiskLevel.ALTO]: 0,
+    };
+
+    strikes.forEach((item) => {
+      const level = ClassifyLightningRisk(
+        item.intensity !== null ? Number(item.intensity) : null,
+      );
+      riskDistribution[level]++;
+    });
+
+    return {
+      totalEvents: Number(rawStats?.totalEvents || 0),
+      averageIntensityKa: Number(
+        Number(rawStats?.averageIntensityKa || 0).toFixed(2),
+      ),
+      maxIntensityKa: Number(rawStats?.maxIntensityKa || 0),
+      minIntensityKa: Number(rawStats?.minIntensityKa || 0),
+      riskDistribution,
+    };
+  }
+
+  private identifyCity(lat: number, lon: number): string {
+    const latNum = Number(lat);
+    const lonNum = Number(lon);
+
+    if (Math.abs(latNum - -25.4284) < 0.1) return 'Curitiba';
+    if (Math.abs(latNum - -12.9714) < 0.1) return 'Salvador';
+    if (Math.abs(latNum - -19.9167) < 0.1) return 'Belo Horizonte';
+    if (Math.abs(latNum - -22.9068) < 0.1) return 'Rio de Janeiro';
+    if (Math.abs(latNum - -3.7172) < 0.1) return 'Fortaleza';
+    if (Math.abs(latNum - -23.5505) < 0.1) return 'São Paulo';
+    if (Math.abs(latNum - -30.0346) < 0.1) return 'Porto Alegre';
+    if (Math.abs(latNum - -15.7975) < 0.1) return 'Brasília';
+    if (Math.abs(latNum - -16.6869) < 0.1) return 'Goiânia';
+    if (Math.abs(latNum - -3.119) < 0.1) return 'Manaus';
+    if (Math.abs(latNum - -1.4558) < 0.1) return 'Belém';
+    if (Math.abs(latNum - -8.0476) < 0.1) return 'Recife';
+    if (Math.abs(latNum - -15.6014) < 0.1) return 'Cuiabá';
+    if (Math.abs(latNum - -20.4697) < 0.1) return 'Campo Grande';
+    if (Math.abs(latNum - -27.5954) < 0.1) return 'Florianópolis';
+
+    return `Coord (${latNum.toFixed(2)}, ${lonNum.toFixed(2)})`;
+  }
+
+  async getLocationRanking(limit = 15) {
+    const rawData = await this.repo
+      .createQueryBuilder('strike')
+      .select('strike.latitude', 'latitude')
+      .addSelect('strike.longitude', 'longitude')
+      .addSelect('COUNT(strike.id)', 'count')
+      .addSelect('ROUND(AVG(strike.intensity), 2)', 'avgIntensityKa')
+      .where('strike.intensity IS NOT NULL')
+      .groupBy('strike.latitude, strike.longitude')
+      .orderBy('count', 'DESC')
+      .limit(limit)
+      .getRawMany();
+
+    return rawData.map((item) => ({
+      city: this.identifyCity(item.latitude, item.longitude),
+      latitude: item.latitude,
+      longitude: item.longitude,
+      count: Number(item.count),
+      avgIntensityKa: Number(item.avgIntensityKa || 0),
+    }));
+  }
+
+  async getPeakHours() {
+    const hoursData = await this.repo
+      .createQueryBuilder('strike')
+      .select('HOUR(strike.occurrenceDate)', 'hour')
+      .addSelect('COUNT(strike.id)', 'count')
+      .where('strike.intensity IS NOT NULL')
+      .groupBy('HOUR(strike.occurrenceDate)')
+      .orderBy('hour', 'ASC')
+      .getRawMany();
+
+    return hoursData.map((item) => ({
+      hour: Number(item.hour),
+      formattedHour: `${String(item.hour).padStart(2, '0')}:00`,
+      count: Number(item.count),
+    }));
   }
 }

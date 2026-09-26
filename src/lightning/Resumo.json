@@ -1,0 +1,11 @@
+{
+    "totalEvents": 100098,
+    "averageIntensityKa": 24.14,
+    "maxIntensityKa": 42,
+    "minIntensityKa": 22,
+    "riskDistribution": {
+        "BAIXO": 98301,
+        "MEDIO": 1605,
+        "ALTO": 192
+    }
+}

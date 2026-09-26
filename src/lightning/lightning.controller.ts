@@ -37,6 +37,22 @@ export class LightningController {
     };
   }
 
+  @Get('analytics/summary')
+  getSummary() {
+    return this.lightningService.getSummaryMetrics();
+  }
+
+  @Get('analytics/ranking')
+  getRanking(@Query('limit') limit?: string) {
+    const parsedLimit = limit ? parseInt(limit, 10) : 15;
+    return this.lightningService.getLocationRanking(parsedLimit);
+  }
+
+  @Get('analytics/peak-hours')
+  getPeakHours() {
+    return this.lightningService.getPeakHours();
+  }
+
   @Get()
   async findAll(@Query() query: QueryLightningDto) {
     return this.lightningService.findAll(query);
