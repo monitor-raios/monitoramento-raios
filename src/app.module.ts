@@ -24,9 +24,9 @@ import { LightningModule } from './lightning/lightning.module';
           database: config.get<string>('DB_NAME', 'weather_dash'),
           entities: [LightningStrike],
           synchronize: !isProduction,
-          ssl: {
-            rejectUnauthorized: true,
-          },
+          ssl: isProduction
+            ? { rejectUnauthorized: true }
+            : undefined,
           extra: {
             connectionLimit: isProduction ? 5 : 10,
             connectTimeout: 10000,
